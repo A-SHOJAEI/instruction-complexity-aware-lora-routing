@@ -1,0 +1,71 @@
+# Default configuration for complexity-aware LoRA routing
+
+# Model configuration
+model:
+  base_model_name: "microsoft/DialoGPT-small"  # Base language model
+  num_experts: 3                               # Number of LoRA expert models
+  complexity_thresholds: [0.3, 0.7]          # Complexity thresholds for expert assignment
+  router_hidden_dim: 256                       # Router network hidden dimension
+  router_dropout: 0.1                         # Router dropout probability
+  lora_rank: 16                               # LoRA rank (r parameter)
+  lora_alpha: 32                              # LoRA alpha scaling parameter
+  lora_dropout: 0.05                          # LoRA dropout probability
+  target_modules: ["c_attn", "c_proj"]       # Modules to apply LoRA to (GPT-2 architecture)
+
+# Training configuration
+training:
+  batch_size: 8                               # Training batch size
+  learning_rate: 5.0e-5                      # Expert models learning rate
+  router_learning_rate: 1.0e-3               # Router learning rate (typically higher)
+  num_epochs: 3                              # Number of training epochs
+  warmup_steps: 500                          # Learning rate warmup steps
+  weight_decay: 0.01                         # Weight decay for regularization
+  gradient_accumulation_steps: 4              # Gradient accumulation steps
+  max_grad_norm: 1.0                         # Maximum gradient norm for clipping
+  save_steps: 1000                           # Save checkpoint every N steps
+  eval_steps: 500                            # Evaluate every N steps
+  logging_steps: 100                         # Log metrics every N steps
+  seed: 42                                   # Random seed for reproducibility
+  fp16: false                                # Disabled - Accelerate unscale conflict with per-expert grad clip
+  dataloader_num_workers: 4                  # Number of dataloader workers
+
+# Data configuration
+data:
+  dataset_name: "tatsu-lab/alpaca"           # Hugging Face dataset name
+  max_length: 512                           # Maximum sequence length
+  train_split_ratio: 0.8                   # Training data split ratio
+  val_split_ratio: 0.1                     # Validation data split ratio
+  test_split_ratio: 0.1                    # Test data split ratio
+  complexity_features:                      # Features for complexity analysis
+    - "instruction_length"
+    - "response_length"
+    - "syntactic_complexity"
+    - "semantic_diversity"
+    - "dependency_depth"
+  min_instruction_length: 10                # Minimum instruction length
+  max_instruction_length: 1000              # Maximum instruction length
+
+# Evaluation configuration
+evaluation:
+  metrics:                                  # Metrics to compute
+    - "routing_accuracy"
+    - "perplexity"
+    - "bleu"
+    - "rouge_l"
+  target_routing_accuracy: 0.85             # Target routing accuracy
+  target_perplexity_improvement: 0.15       # Target perplexity improvement vs single LoRA
+  max_inference_latency_ms: 5.0             # Maximum inference latency (ms)
+  num_eval_samples: 1000                    # Number of samples for evaluation
+
+# Paths
+output_dir: "./outputs"                     # Output directory for models and logs
+cache_dir: "./cache"                       # Cache directory for datasets
+log_dir: "./logs"                          # Directory for log files
+
+# MLflow configuration
+mlflow_experiment_name: "complexity-aware-lora-routing"  # MLflow experiment name
+mlflow_tracking_uri: null                  # MLflow tracking URI (null for local)
+
+# Hardware configuration
+device: "auto"                             # Device selection ('auto', 'cpu', 'cuda')
+num_gpus: 1                               # Number of GPUs to use
