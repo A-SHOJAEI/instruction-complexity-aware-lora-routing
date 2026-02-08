@@ -176,12 +176,14 @@ class ComplexityAwareLoRARouter(nn.Module):
         self.tokenizer = tokenizer
         self.num_experts = config.num_experts
 
-        # Load base model
+        # Store model name for creating independent expert copies
+        self._base_model_name = base_model_name
+
+        # Load base model for feature extraction only
         logger.info(f"Loading base model: {base_model_name}")
         self.base_model = AutoModelForCausalLM.from_pretrained(
             base_model_name,
-            torch_dtype=torch.float16,
-            device_map="auto",
+            torch_dtype=torch.float32,
             trust_remote_code=True
         )
 
@@ -210,9 +212,24 @@ class ComplexityAwareLoRARouter(nn.Module):
         logger.info(f"Created model with {config.num_experts} LoRA experts")
 
     def _create_lora_experts(self) -> None:
-        """Create LoRA expert models."""
+        """Create LoRA expert models with independent base model copies.
+
+        Each expert gets its own frozen base model wrapped in a separate PeftModel,
+        ensuring independent LoRA parameters that can specialize differently.
+        """
         for expert_idx in range(self.num_experts):
-            logger.info(f"Creating LoRA expert {expert_idx}")
+            logger.info(f"Creating LoRA expert {expert_idx} (independent base model)")
+
+            # Load a fresh base model for each expert to ensure independence
+            expert_base = AutoModelForCausalLM.from_pretrained(
+                self._base_model_name,
+                torch_dtype=torch.float32,
+                trust_remote_code=True
+            )
+
+            # Freeze base model parameters - only LoRA adapters will be trained
+            for param in expert_base.parameters():
+                param.requires_grad = False
 
             # Configure LoRA
             lora_config = LoraConfig(
@@ -224,9 +241,16 @@ class ComplexityAwareLoRARouter(nn.Module):
                 bias="none",
             )
 
-            # Create LoRA model
-            expert_model = get_peft_model(self.base_model, lora_config)
+            # Create independent PeftModel for this expert
+            expert_model = get_peft_model(expert_base, lora_config)
             self.expert_models.append(expert_model)
+
+        # Log parameter counts
+        total_trainable = sum(
+            p.numel() for expert in self.expert_models
+            for p in expert.parameters() if p.requires_grad
+        )
+        logger.info(f"Total trainable LoRA parameters across {self.num_experts} experts: {total_trainable:,}")
 
     def _extract_instruction_features(self, input_ids: torch.Tensor) -> torch.Tensor:
         """Extract instruction features using base model embeddings.
@@ -425,7 +449,7 @@ class ComplexityAwareLoRARouter(nn.Module):
         # These weights balance different training objectives:
         # - Routing loss: Full weight (1.0) - primary objective for expert selection
         # - Complexity loss: 0.1 - auxiliary task, helps routing but shouldn't dominate
-        # - Load balance loss: 0.01 - regularization to prevent expert collapse
+        # - Load balance loss: 0.1 - regularization to prevent expert collapse
         # - Expert loss: Full weight (1.0) - primary objective for generation quality
         total_loss = 0.0
         if 'routing_loss' in outputs and training_mode in ["joint", "routing_only"]:

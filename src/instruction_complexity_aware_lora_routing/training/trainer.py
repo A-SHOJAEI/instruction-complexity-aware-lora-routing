@@ -178,7 +178,7 @@ class LoRATrainer:
         router_params = list(self.model.router.parameters())
         expert_params = []
         for expert in self.model.expert_models:
-            expert_params.extend(list(expert.parameters()))
+            expert_params.extend([p for p in expert.parameters() if p.requires_grad])
 
         # Expert optimizer
         self.optimizer = AdamW(
@@ -215,28 +215,33 @@ class LoRATrainer:
 
     def _setup_mlflow(self) -> None:
         """Set up MLflow tracking."""
+        self.mlflow_active = False
         if self.accelerator.is_main_process:
-            if self.config.mlflow_tracking_uri:
-                mlflow.set_tracking_uri(self.config.mlflow_tracking_uri)
+            try:
+                if self.config.mlflow_tracking_uri:
+                    mlflow.set_tracking_uri(self.config.mlflow_tracking_uri)
 
-            # Set experiment
-            mlflow.set_experiment(self.config.mlflow_experiment_name)
+                # Set experiment
+                mlflow.set_experiment(self.config.mlflow_experiment_name)
 
-            # Start run
-            mlflow.start_run()
+                # Start run
+                mlflow.start_run()
 
-            # Log configuration
-            mlflow.log_params({
-                "model_name": self.config.model.base_model_name,
-                "num_experts": self.config.model.num_experts,
-                "lora_rank": self.config.model.lora_rank,
-                "lora_alpha": self.config.model.lora_alpha,
-                "batch_size": self.config.training.batch_size,
-                "learning_rate": self.config.training.learning_rate,
-                "router_learning_rate": self.config.training.router_learning_rate,
-                "num_epochs": self.config.training.num_epochs,
-                "max_length": self.config.data.max_length,
-            })
+                # Log configuration
+                mlflow.log_params({
+                    "model_name": self.config.model.base_model_name,
+                    "num_experts": self.config.model.num_experts,
+                    "lora_rank": self.config.model.lora_rank,
+                    "lora_alpha": self.config.model.lora_alpha,
+                    "batch_size": self.config.training.batch_size,
+                    "learning_rate": self.config.training.learning_rate,
+                    "router_learning_rate": self.config.training.router_learning_rate,
+                    "num_epochs": self.config.training.num_epochs,
+                    "max_length": self.config.data.max_length,
+                })
+                self.mlflow_active = True
+            except Exception as e:
+                logger.warning(f"MLflow setup failed: {e}. Training will continue without MLflow.")
 
     @performance_monitor("Full training")
     def train(self) -> Dict[str, Any]:
@@ -276,14 +281,17 @@ class LoRATrainer:
             training_history['expert_usage'].append(val_metrics['expert_usage'])
 
             # Log to MLflow
-            if self.accelerator.is_main_process:
-                mlflow.log_metrics({
-                    'train_loss': train_metrics['loss'],
-                    'val_loss': val_metrics['loss'],
-                    'routing_accuracy': val_metrics['routing_accuracy'],
-                    'complexity_mse': val_metrics['complexity_mse'],
-                    'epoch': epoch + 1
-                }, step=self.global_step)
+            if self.accelerator.is_main_process and self.mlflow_active:
+                try:
+                    mlflow.log_metrics({
+                        'train_loss': train_metrics['loss'],
+                        'val_loss': val_metrics['loss'],
+                        'routing_accuracy': val_metrics['routing_accuracy'],
+                        'complexity_mse': val_metrics['complexity_mse'],
+                        'epoch': epoch + 1
+                    }, step=self.global_step)
+                except Exception:
+                    pass
 
             # Save checkpoint
             if val_metrics['loss'] < self.best_val_loss:
@@ -304,16 +312,22 @@ class LoRATrainer:
             test_metrics = self._evaluate_test()
             training_history['test_metrics'] = test_metrics
 
-            if self.accelerator.is_main_process:
-                mlflow.log_metrics({
-                    'test_loss': test_metrics['loss'],
-                    'test_routing_accuracy': test_metrics['routing_accuracy'],
-                    'test_complexity_mse': test_metrics['complexity_mse'],
-                })
+            if self.accelerator.is_main_process and self.mlflow_active:
+                try:
+                    mlflow.log_metrics({
+                        'test_loss': test_metrics['loss'],
+                        'test_routing_accuracy': test_metrics['routing_accuracy'],
+                        'test_complexity_mse': test_metrics['complexity_mse'],
+                    })
+                except Exception:
+                    pass
 
         # End MLflow run
-        if self.accelerator.is_main_process:
-            mlflow.end_run()
+        if self.accelerator.is_main_process and self.mlflow_active:
+            try:
+                mlflow.end_run()
+            except Exception:
+                pass
 
         logger.info("Training completed!")
         return training_history
@@ -378,12 +392,14 @@ class LoRATrainer:
                 loss = outputs.get('loss', 0.0)
                 if loss > 0:
                     self.accelerator.backward(loss)
-                    # Clip gradients for all expert parameters
+                    # Clip gradients for trainable expert parameters (LoRA only)
                     for expert in self.model.expert_models:
-                        self.accelerator.clip_grad_norm_(
-                            expert.parameters(),
-                            self.config.training.max_grad_norm
-                        )
+                        trainable_params = [p for p in expert.parameters() if p.requires_grad]
+                        if trainable_params:
+                            self.accelerator.clip_grad_norm_(
+                                trainable_params,
+                                self.config.training.max_grad_norm
+                            )
                     self.optimizer.step()
                     self.scheduler.step()
                     phase_losses.append(loss.item())
@@ -411,10 +427,12 @@ class LoRATrainer:
                             self.config.training.max_grad_norm
                         )
                         for expert in self.model.expert_models:
-                            self.accelerator.clip_grad_norm_(
-                                expert.parameters(),
-                                self.config.training.max_grad_norm
-                            )
+                            trainable_params = [p for p in expert.parameters() if p.requires_grad]
+                            if trainable_params:
+                                self.accelerator.clip_grad_norm_(
+                                    trainable_params,
+                                    self.config.training.max_grad_norm
+                                )
                         self.optimizer.step()
                         self.router_optimizer.step()
                         self.scheduler.step()
@@ -432,8 +450,11 @@ class LoRATrainer:
 
             # Log periodically
             if self.global_step % self.config.training.logging_steps == 0:
-                if self.accelerator.is_main_process:
-                    mlflow.log_metric('train_step_loss', batch_loss, step=self.global_step)
+                if self.accelerator.is_main_process and self.mlflow_active:
+                    try:
+                        mlflow.log_metric('train_step_loss', batch_loss, step=self.global_step)
+                    except Exception:
+                        pass
 
         avg_loss = total_loss / max(num_batches, 1)
         return {'loss': avg_loss}

@@ -2,7 +2,7 @@
 
 # Model configuration
 model:
-  base_model_name: "microsoft/DialoGPT-small"  # Base language model
+  base_model_name: "gpt2"                       # Base language model
   num_experts: 3                               # Number of LoRA expert models
   complexity_thresholds: [0.3, 0.7]          # Complexity thresholds for expert assignment
   router_hidden_dim: 256                       # Router network hidden dimension
@@ -17,7 +17,7 @@ training:
   batch_size: 8                               # Training batch size
   learning_rate: 5.0e-5                      # Expert models learning rate
   router_learning_rate: 1.0e-3               # Router learning rate (typically higher)
-  num_epochs: 3                              # Number of training epochs
+  num_epochs: 5                              # Number of training epochs
   warmup_steps: 500                          # Learning rate warmup steps
   weight_decay: 0.01                         # Weight decay for regularization
   gradient_accumulation_steps: 4              # Gradient accumulation steps

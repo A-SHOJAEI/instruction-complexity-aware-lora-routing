@@ -22,7 +22,7 @@ COMPLEXITY_FEATURE_WEIGHTS = {
 
 # Loss combination weights
 COMPLEXITY_LOSS_WEIGHT = 0.1   # Weight for auxiliary complexity prediction task
-LOAD_BALANCE_LOSS_WEIGHT = 0.01  # Weight for expert load balancing regularization
+LOAD_BALANCE_LOSS_WEIGHT = 0.1   # Weight for expert load balancing regularization (increased to prevent collapse)
 
 # Model architecture constants
 EPSILON = 1e-8  # Small constant to avoid log(0) in entropy calculations
