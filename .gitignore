@@ -215,3 +215,4 @@ mlruns/
 # Hydra
 .hydra/
 outputs/*.db
+*.pyc
