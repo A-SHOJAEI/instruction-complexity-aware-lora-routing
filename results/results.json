@@ -1,0 +1,65 @@
+{
+  "run_name": "flawless-fish-632",
+  "test_metrics": {
+    "test_loss": 2.494432692154212,
+    "test_perplexity": 12.11485871430938,
+    "routing_accuracy": 0.9721207460103826,
+    "complexity_mse": 0.0076158433221280575
+  },
+  "training_history": {
+    "epochs": 5,
+    "total_steps": 26000,
+    "train_loss": [
+      3.3374741124934877,
+      1.7831389682993106,
+      1.7778808581661896,
+      1.774277338155973,
+      1.780788297080555
+    ],
+    "val_loss": [
+      2.7827708823864277,
+      2.551732959013719,
+      2.551732959013719,
+      2.551732959013719,
+      2.551732959013719
+    ],
+    "routing_accuracy": [
+      0.9684615384615385,
+      0.9684615384615385,
+      0.9684615384615385,
+      0.9684615384615385,
+      0.9684615384615385
+    ],
+    "complexity_mse": [
+      0.20975196361541748,
+      0.007563458289951086,
+      0.007563458289951086,
+      0.007563458289951086,
+      0.007563458289951086
+    ]
+  },
+  "model_config": {
+    "base_model": "gpt2",
+    "num_experts": 3,
+    "lora_rank": 16,
+    "lora_alpha": 32,
+    "target_modules": [
+      "c_attn",
+      "c_proj"
+    ],
+    "router_hidden_dim": 256,
+    "max_length": 512
+  },
+  "training_config": {
+    "num_epochs": 5,
+    "batch_size": 8,
+    "learning_rate": 5e-05,
+    "router_learning_rate": 0.001,
+    "load_balance_loss_weight": 0.1
+  },
+  "dataset": {
+    "name": "Alpaca",
+    "total_samples": "52K instruction-response pairs",
+    "complexity_stratification": "3 tiers (simple/medium/complex)"
+  }
+}

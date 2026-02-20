@@ -185,6 +185,9 @@ wandb/
 *.h5
 *.hdf5
 
+# Allow results
+!results/results.json
+
 # Training logs
 training_output.log
 nohup.out

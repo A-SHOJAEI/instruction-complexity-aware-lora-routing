@@ -68,6 +68,10 @@ Trained on 52K instruction-response pairs from the [Alpaca dataset](https://hugg
 
 | Metric | Value |
 |--------|-------|
+| Test Loss | 2.494 |
+| Test Perplexity | 12.11 |
+| Routing Accuracy | 97.2% |
+| Complexity MSE | 0.008 |
 | Best Validation Loss | 2.55 |
 | Final Train Loss (avg) | 1.78 |
 | Expert Independence | Confirmed (3 separate adapters, balanced router biases) |
